@@ -239,7 +239,11 @@ class Trie:
 
 class TestSearches(unittest.TestCase):
     def setUp(self) -> None:
-        self.sentences = {
+        self.trie: Trie | None = None
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.sentences = {
             "Turn on the living room light": "turn on living room light",
             "Turn on the living room lights": "turn on living room light",
             "Turn on the bedroom light": "turn on bedroom light",
@@ -248,7 +252,7 @@ class TestSearches(unittest.TestCase):
             "Turn on the kitchen lights": "turn on kitchen light",
         }
 
-        self.test_cases: list[tuple[str, str|None]] = [
+        cls.test_cases: list[tuple[str, str|None]] = [
             ("Turn on the living room light", "turn on living room light"),
             ("Turn on the living room lights", "turn on living room light"),
             ("Turn on the bedroom light", "turn on bedroom light"),
@@ -261,7 +265,18 @@ class TestSearches(unittest.TestCase):
             ("Turn off the living room light", None),
             ("Turn on the den light on", None),
         ]
-        self.trie: Trie | None = None
+        cls.benchmark_summaries: list[tuple[str, int, int, int]] = []
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        assert cls.benchmark_summaries
+        for summary in cls.benchmark_summaries:
+            print(
+                "\n",
+                f"{summary[0]}: {len(cls.test_cases)} tests. "
+                f"{summary[1]} mismatch, {summary[2]} false positives, {summary[3]} false negatives.",
+                "\n",
+            )
 
     def build_trie(self, pre_proccess_func: Callable[[str], Any] = lambda x: x) -> Trie:
         trie = Trie()
@@ -271,12 +286,14 @@ class TestSearches(unittest.TestCase):
 
     def _test_results(
         self,
+        test_name: str,
         distance_func: Callable[[str, str], int],
         node_max_distance: int = 3,
         max_distance: int = 3,
         pre_proccess_func: Callable[[str], Any] = lambda x: x,
     ):
         trie = self.trie or self.build_trie(pre_proccess_func)
+        mismatch, false_positives, false_negatives = 0, 0, 0
         for search_key, expected in self.test_cases:
             with self.subTest(search_key=search_key):
                 results = trie.distance_search(
@@ -285,12 +302,26 @@ class TestSearches(unittest.TestCase):
                     node_max_distance,
                     max_distance,
                 )
+
+                # Build benchmark summary
+                if expected is None and results:
+                    false_positives += 1
+                elif not results and expected is not None:
+                    false_negatives += 1
+                elif expected is None and not results:
+                    pass
+                elif results[0].value != expected:
+                    mismatch += 1
+
                 if expected is None:
                     self.assertEqual(results, [])
+                    continue
                 else:
                     self.assertNotEqual(results, [])
 
                 self.assertEqual(results[0].value, expected)
+
+        self.benchmark_summaries.append((test_name, mismatch, false_positives, false_negatives))
 
     # def test_levenshtein_char(self):
     #     from Levenshtein import distance
@@ -326,12 +357,14 @@ class TestSearches(unittest.TestCase):
     #         distance,
     #         pre_proccess_func=lambda x: dmeta(x),
     #     )
+    
 
     def test_phonetics_metaphone_levenshtein(self):
         import phonetics
         from Levenshtein import distance
 
         self._test_results(
+            "ponetics_metaphone_levenshtein",
             distance,
             pre_proccess_func=phonetics.metaphone,
         )
@@ -341,6 +374,7 @@ class TestSearches(unittest.TestCase):
         from Levenshtein import distance
 
         self._test_results(
+            "ponetics_dmetaphone_levenshtein",
             distance,
             pre_proccess_func=phonetics.dmetaphone,
         )
@@ -350,6 +384,7 @@ class TestSearches(unittest.TestCase):
         from Levenshtein import distance
 
         self._test_results(
+            "ponetics_soundex_levenshtein",
             distance,
             pre_proccess_func=phonetics.soundex
         )
@@ -359,6 +394,7 @@ class TestSearches(unittest.TestCase):
         from Levenshtein import distance
 
         self._test_results(
+            "ponetics_nysiis_levenshtein",
             distance,
             pre_proccess_func=phonetics.nysiis,
         )
